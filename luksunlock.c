@@ -129,7 +129,7 @@ void draw_screen() {
 	// This probably only looks good in HTC Wildfire resolution
 	int bgwidth, bgheight, bgxpos, bgypos, i, cols;
 
-	gr_color(0, 0, 0, 255);
+	gr_color(255, 255, 255, 255);
 	gr_fill(0, 0, gr_fb_width(), gr_fb_height());
 
 	bgwidth = gr_get_width(background);
@@ -139,6 +139,7 @@ void draw_screen() {
 
 	gr_blit(background, 0, 0, bgwidth, bgheight, bgxpos, bgypos);
 
+	gr_color(0, 0, 0, 255);
 	gr_text(0, CHAR_HEIGHT, "Enter unlock phrase: ");
 
 	cols = gr_fb_width() / CHAR_WIDTH;
@@ -248,7 +249,7 @@ void handle_key(struct input_event event) {
 	keys[current].selected = 1;
 
 	// Pressed joystick
-	if(event.type == EV_KEY && event.value == 0 && event.code == BTN_MOUSE) {
+	if(event.type == EV_KEY && event.code == BTN_MOUSE) {
 		snprintf(passphrase, sizeof(passphrase) - 1, "%s%c", passphrase, keys[current].key);
 	}
 
