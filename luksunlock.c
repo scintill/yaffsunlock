@@ -9,6 +9,8 @@
 #include "minui/minui.h"
 
 #define CRYPTSETUP		"/system/bin/cryptsetup"
+#define CRYPTSETUP		"/sbin/cryptsetup"
+#define MOUNT			"/system/xbin/mount"
 
 #define SDCARD_DEVICE		"/dev/block/mmcblk0p2"
 #define DATA_DEVICE		"/dev/block/loop0"
@@ -150,8 +152,9 @@ void draw_screen() {
 	for(; i < cols - 1; i++)
 		gr_text(i * CHAR_WIDTH, CHAR_HEIGHT * 2, "_");
 
-	gr_text(0, gr_fb_height() - CHAR_HEIGHT, "Press Volup to unlock");
-	gr_text(0, gr_fb_height(), "Press Voldown to erase");
+	gr_text(0, gr_fb_height() - (CHAR_HEIGHT * 2), "Press Volup to unlock");
+	gr_text(0, gr_fb_height() - CHAR_HEIGHT, "Press Voldown to erase");
+	gr_text(0, gr_fb_height(), "Press Power to boot with blank ramdisk");
 
 	draw_keymap();
 	gr_flip();
@@ -181,16 +184,24 @@ void generate_keymap() {
 	keys[current].selected = 1;
 }
 
-void unlock() {
-	char buffer[2048];
-	int fd, failed = 0;
-
+void write_modal_status_text(char *text) {
 	gr_color(0, 0, 0, 255);
 	gr_fill(0, 0, gr_fb_width(), gr_fb_height());
 	gr_color(255, 255, 255, 255);
 
-	gr_text((gr_fb_width() / 2) - ((strlen("Unlocking...") / 2) * CHAR_WIDTH), gr_fb_height() / 2, "Unlocking...");
+	write_centered_text(text, 0);
 	gr_flip();
+}
+
+void write_centered_text(char *text, int line_offset) {
+	gr_text((gr_fb_width() / 2) - ((strlen(text) / 2) * CHAR_WIDTH), (gr_fb_height() / 2) + line_offset * CHAR_HEIGHT, text);
+}
+
+void unlock() {
+	char buffer[2048];
+	int fd, failed = 0;
+
+	write_modal_status_text("Unlocking...");
 
 	snprintf(buffer, sizeof(buffer) - 1, "echo %s | %s luksOpen %s %s", escape_input(passphrase), CRYPTSETUP, SDCARD_DEVICE, SDCARD_MAPPER_NAME);
 	system(buffer);
@@ -209,16 +220,24 @@ void unlock() {
 		failed = 1;
 
 	if(!failed) {
-		gr_text((gr_fb_width() / 2) - ((strlen("Success!") / 2) * CHAR_WIDTH), gr_fb_height() / 2 + CHAR_HEIGHT, "Success!");
+		write_centered_text("Success!", 1);
 		gr_flip();
 		exit(0);
 	}
 
-	gr_text((gr_fb_width() / 2) - ((strlen("Failed!") / 2) * CHAR_WIDTH), gr_fb_height() / 2 + CHAR_HEIGHT, "Failed!");
+	write_centered_text("Failed!", 1);
 	gr_flip();
 
 	sleep(2);
 	passphrase[0] = '\0';
+}
+
+void boot_with_ramdisk() {
+	write_modal_status_text("Booting with ramdisk...");
+
+	system(MOUNT " -t tmpfs -o nosuid,nodev tmpfs /data");
+
+	exit(0);
 }
 
 void handle_key(struct input_event event) {
@@ -265,6 +284,9 @@ void handle_key(struct input_event event) {
 		} else if(event.code == KEY_VOLUMEUP) {
 			// Pressed vol up
 			unlock();
+		} else if (event.code == KEY_POWER) {
+			// Power
+			boot_with_ramdisk();
 		}
 	}
 
