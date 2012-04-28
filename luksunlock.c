@@ -225,41 +225,47 @@ void handle_key(struct input_event event) {
 	int cols;
 
 	cols = gr_fb_width() / (CHAR_WIDTH * 3);
-	keys[current].selected = 0;
 
-	// Joystick down or up
-	if(event.type == EV_REL && event.code == 1) {
-		if(event.value > 0) {
-			if(current + cols < (CHAR_END - CHAR_START))
-				current += cols;
-		} else if(event.value < 0) {
-			if(current - cols > 0)
-				current -= cols;
+	// Joystick
+	if(event.type == EV_REL && event.value != 0) {
+		keys[current].selected = 0;
+
+		// down or up
+		if(event.code == REL_Y) {
+			if(event.value > 0) {
+				if(current + cols < (CHAR_END - CHAR_START)) {
+					current += cols;
+				}
+			} else {
+				if(current - cols > 0) {
+					current -= cols;
+				}
+			}
+		} else if(event.code == REL_X) {
+			// left or right
+			if(event.value > 0) {
+				if(current < (CHAR_END - CHAR_START) - 1) {
+					current++;
+				}
+			} else {
+				if(current > 0) {
+					current--;
+				}
+			}
 		}
-	}
 
-	// Joystick left or right
-	if(event.type == EV_REL && event.code == 0) {
-		if(event.value > 0 && current < (CHAR_END - CHAR_START) - 1)
-				current++;
-		else if(event.value < 0 && current > 0)
-				current--;
-	}
-
-	keys[current].selected = 1;
-
-	// Pressed joystick
-	if(event.type == EV_KEY && event.code == BTN_MOUSE) {
-		snprintf(passphrase, sizeof(passphrase) - 1, "%s%c", passphrase, keys[current].key);
-	}
-
-	// Pressed vol down
-	if(event.type == EV_KEY && event.code == KEY_VOLUMEDOWN)
-		passphrase[strlen(passphrase) - 1] = '\0';
-
-	// Pressed vol up
-	if(event.type == 1 && event.code == KEY_VOLUMEUP) {
-		unlock();
+		keys[current].selected = 1;
+	} else if(event.type == EV_KEY) {
+		if(event.code == BTN_MOUSE) {
+			// Pressed joystick
+			snprintf(passphrase, sizeof(passphrase) - 1, "%s%c", passphrase, keys[current].key);
+		} else if(event.code == KEY_VOLUMEDOWN) {
+			// Pressed vol down
+			passphrase[strlen(passphrase) - 1] = '\0';
+		} else if(event.code == KEY_VOLUMEUP) {
+			// Pressed vol up
+			unlock();
+		}
 	}
 
 	draw_screen();
