@@ -200,18 +200,18 @@ void unlock() {
 
 	write_modal_status_text("Unlocking...");
 
-	snprintf(buffer, sizeof(buffer) - 1, "echo %s | %s luksOpen %s %s", escape_input(passphrase), cmd_cryptsetup, dev_sdcard, mapname_sdcard);
+	snprintf(buffer, sizeof(buffer), "echo %s | %s luksOpen %s %s", escape_input(passphrase), cmd_cryptsetup, dev_sdcard, mapname_sdcard);
 	system(buffer);
 
-	snprintf(buffer, sizeof(buffer) - 1, "echo %s | %s luksOpen %s %s", escape_input(passphrase), cmd_cryptsetup, dev_userdata, mapname_userdata);
+	snprintf(buffer, sizeof(buffer), "echo %s | %s luksOpen %s %s", escape_input(passphrase), cmd_cryptsetup, dev_userdata, mapname_userdata);
 	system(buffer);
 
-	snprintf(buffer, sizeof(buffer) - 1, "/dev/mapper/%s", mapname_sdcard);
+	snprintf(buffer, sizeof(buffer), "/dev/mapper/%s", mapname_sdcard);
 	fd = open(buffer, 0);
 	if(fd < 0)
 		failed = 1;
 
-	snprintf(buffer, sizeof(buffer) - 1, "/dev/mapper/%s", mapname_userdata);
+	snprintf(buffer, sizeof(buffer), "/dev/mapper/%s", mapname_userdata);
 	fd = open(buffer, 0);
 	if(fd < 0)
 		failed = 1;
@@ -277,7 +277,7 @@ void handle_key(struct input_event event) {
 	} else if(event.type == EV_KEY) {
 		if(event.code == BTN_MOUSE) {
 			// Pressed joystick
-			snprintf(passphrase, sizeof(passphrase) - 1, "%s%c", passphrase, keys[current].key);
+			snprintf(passphrase, sizeof(passphrase), "%s%c", passphrase, keys[current].key);
 		} else if(event.code == KEY_VOLUMEDOWN) {
 			// Pressed vol down
 			passphrase[strlen(passphrase) - 1] = '\0';
