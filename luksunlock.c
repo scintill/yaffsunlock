@@ -8,15 +8,6 @@
 
 #include "minui/minui.h"
 
-#define CRYPTSETUP		"/system/bin/cryptsetup"
-#define MOUNT			"/system/xbin/mount"
-
-#define SDCARD_DEVICE		"/dev/block/mmcblk0p2"
-#define DATA_DEVICE		"/dev/block/loop0"
-
-#define SDCARD_MAPPER_NAME	"encrypted-sdcard"
-#define DATA_MAPPER_NAME	"encrypted-data"
-
 #define CHAR_WIDTH		10
 #define CHAR_HEIGHT		18
 
@@ -40,6 +31,13 @@ unsigned int sp = 0;
 
 gr_surface background;
 int res, current = 0;
+
+char *cmd_cryptsetup;
+char *cmd_mount;
+char *dev_sdcard;
+char *dev_userdata;
+char *mapname_sdcard;
+char *mapname_userdata;
 
 char *escape_input(char *str) {
 	size_t i, j = 0;
@@ -202,18 +200,18 @@ void unlock() {
 
 	write_modal_status_text("Unlocking...");
 
-	snprintf(buffer, sizeof(buffer) - 1, "echo %s | %s luksOpen %s %s", escape_input(passphrase), CRYPTSETUP, SDCARD_DEVICE, SDCARD_MAPPER_NAME);
+	snprintf(buffer, sizeof(buffer) - 1, "echo %s | %s luksOpen %s %s", escape_input(passphrase), cmd_cryptsetup, dev_sdcard, mapname_sdcard);
 	system(buffer);
 
-	snprintf(buffer, sizeof(buffer) - 1, "echo %s | %s luksOpen %s %s", escape_input(passphrase), CRYPTSETUP, DATA_DEVICE, DATA_MAPPER_NAME);
+	snprintf(buffer, sizeof(buffer) - 1, "echo %s | %s luksOpen %s %s", escape_input(passphrase), cmd_cryptsetup, dev_userdata, mapname_userdata);
 	system(buffer);
 
-	snprintf(buffer, sizeof(buffer) - 1, "/dev/mapper/%s", SDCARD_MAPPER_NAME);
+	snprintf(buffer, sizeof(buffer) - 1, "/dev/mapper/%s", mapname_sdcard);
 	fd = open(buffer, 0);
 	if(fd < 0)
 		failed = 1;
 
-	snprintf(buffer, sizeof(buffer) - 1, "/dev/mapper/%s", DATA_MAPPER_NAME);
+	snprintf(buffer, sizeof(buffer) - 1, "/dev/mapper/%s", mapname_userdata);
 	fd = open(buffer, 0);
 	if(fd < 0)
 		failed = 1;
@@ -232,9 +230,12 @@ void unlock() {
 }
 
 void boot_with_ramdisk() {
+	char buffer[512];
+
 	write_modal_status_text("Booting with ramdisk...");
 
-	system(MOUNT " -t tmpfs -o nosuid,nodev tmpfs /data");
+	snprintf(buffer, sizeof(buffer), "%s -t tmpfs -o nosuid,nodev tmpfs /data", cmd_mount);
+	system(buffer);
 
 	exit(0);
 }
@@ -296,8 +297,25 @@ int main(int argc, char **argv, char **envp) {
 	struct input_event event;
 	pthread_t t;
 	unsigned int i, key_up = 0;
+	char buffer[512];
 
 	ui_init();
+
+	if (argc != 7) {
+		snprintf(buffer, sizeof(buffer), "%s not called correctly", argv[0]);
+		write_modal_status_text(buffer);
+		exit(255);
+	}
+
+	// save configuration params
+	cmd_cryptsetup = argv[1];
+	cmd_mount = argv[2];
+	dev_sdcard = argv[3];
+	mapname_sdcard = argv[4];
+	dev_userdata = argv[5];
+	mapname_userdata = argv[6];
+
+	// show UI
 	generate_keymap();
 	draw_screen();
 
