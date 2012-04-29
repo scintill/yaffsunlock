@@ -3,7 +3,10 @@
 #include <pthread.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <linux/input.h>
 
 #include "minui/minui.h"
@@ -38,6 +41,7 @@ char *dev_sdcard;
 char *dev_userdata;
 char *mapname_sdcard;
 char *mapname_userdata;
+int userdata_is_whyaffs = 0;
 
 char *escape_input(char *str) {
 	size_t i, j = 0;
@@ -194,39 +198,43 @@ void write_modal_status_text(char *text) {
 	gr_flip();
 }
 
-void unlock() {
+int check_file_exists(char *name) {
+	struct stat buf;
+
+	return stat(name, &buf) != -1 || errno != ENOENT;
+}
+
+int unlock() {
 	char buffer[2048];
-	int fd, failed = 0;
 
 	write_modal_status_text("Unlocking...");
 
+	// sdcard
 	snprintf(buffer, sizeof(buffer), "echo %s | %s luksOpen %s %s", escape_input(passphrase), cmd_cryptsetup, dev_sdcard, mapname_sdcard);
 	system(buffer);
 
-	snprintf(buffer, sizeof(buffer), "echo %s | %s luksOpen %s %s", escape_input(passphrase), cmd_cryptsetup, dev_userdata, mapname_userdata);
-	system(buffer);
-
 	snprintf(buffer, sizeof(buffer), "/dev/mapper/%s", mapname_sdcard);
-	fd = open(buffer, 0);
-	if(fd < 0)
-		failed = 1;
-
-	snprintf(buffer, sizeof(buffer), "/dev/mapper/%s", mapname_userdata);
-	fd = open(buffer, 0);
-	if(fd < 0)
-		failed = 1;
-
-	if(!failed) {
-		write_centered_text("Success!", 1);
-		gr_flip();
-		exit(0);
+	if(!check_file_exists(buffer)) {
+		return 0;
 	}
 
-	write_centered_text("Failed!", 1);
-	gr_flip();
+	// userdata
+	if (!userdata_is_whyaffs) {
+		snprintf(buffer, sizeof(buffer), "echo %s | %s luksOpen %s %s", escape_input(passphrase), cmd_cryptsetup, dev_userdata, mapname_userdata);
+		system(buffer);
 
-	sleep(2);
-	passphrase[0] = '\0';
+		snprintf(buffer, sizeof(buffer), "/dev/mapper/%s", mapname_userdata);
+		if(!check_file_exists(buffer)) {
+			return 0;
+		}
+	} else {
+		snprintf(buffer, sizeof(buffer), "%s -t yaffs2 -o nosuid,nodev,relatime,unlock_encrypted=%s %s %s", cmd_mount, escape_input(passphrase), dev_userdata, mapname_userdata);
+		if (system(buffer) != 0) {
+			return 0;
+		}
+	}
+
+	return 1;
 }
 
 void boot_with_ramdisk() {
@@ -283,7 +291,18 @@ void handle_key(struct input_event event) {
 			passphrase[strlen(passphrase) - 1] = '\0';
 		} else if(event.code == KEY_VOLUMEUP) {
 			// Pressed vol up
-			unlock();
+			if (unlock()) {
+				write_centered_text("Success!", 1);
+				gr_flip();
+				exit(0);
+			} else {
+				write_centered_text("Failed!", 1);
+				gr_flip();
+
+				sleep(2);
+				passphrase[0] = '\0';
+			}
+
 		} else if (event.code == KEY_POWER) {
 			// Power
 			boot_with_ramdisk();
@@ -301,7 +320,7 @@ int main(int argc, char **argv, char **envp) {
 
 	ui_init();
 
-	if (argc != 7) {
+	if (argc != 7 && argc != 8) {
 		snprintf(buffer, sizeof(buffer), "%s not called correctly", argv[0]);
 		write_modal_status_text(buffer);
 		exit(255);
@@ -314,6 +333,9 @@ int main(int argc, char **argv, char **envp) {
 	mapname_sdcard = argv[4];
 	dev_userdata = argv[5];
 	mapname_userdata = argv[6];
+	if (argc == 8 && 0 == strcasecmp("whisperyaffs", argv[7])) {
+		userdata_is_whyaffs = 1;
+	}
 
 	// show UI
 	generate_keymap();
