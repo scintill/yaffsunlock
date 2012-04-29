@@ -9,7 +9,6 @@
 #include "minui/minui.h"
 
 #define CRYPTSETUP		"/system/bin/cryptsetup"
-#define CRYPTSETUP		"/sbin/cryptsetup"
 #define MOUNT			"/system/xbin/mount"
 
 #define SDCARD_DEVICE		"/dev/block/mmcblk0p2"
@@ -184,6 +183,10 @@ void generate_keymap() {
 	keys[current].selected = 1;
 }
 
+void write_centered_text(char *text, int line_offset) {
+	gr_text((gr_fb_width() / 2) - ((strlen(text) / 2) * CHAR_WIDTH), (gr_fb_height() / 2) + line_offset * CHAR_HEIGHT, text);
+}
+
 void write_modal_status_text(char *text) {
 	gr_color(0, 0, 0, 255);
 	gr_fill(0, 0, gr_fb_width(), gr_fb_height());
@@ -191,10 +194,6 @@ void write_modal_status_text(char *text) {
 
 	write_centered_text(text, 0);
 	gr_flip();
-}
-
-void write_centered_text(char *text, int line_offset) {
-	gr_text((gr_fb_width() / 2) - ((strlen(text) / 2) * CHAR_WIDTH), (gr_fb_height() / 2) + line_offset * CHAR_HEIGHT, text);
 }
 
 void unlock() {
