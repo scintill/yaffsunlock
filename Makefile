@@ -43,7 +43,7 @@ RANLIB := $(NDK_TOOLCHAIN)/bin/arm-linux-androideabi-ranlib
 STRIP := $(NDK_TOOLCHAIN)/bin/arm-linux-androideabi-strip \
 	--strip-unneeded -R .note -R .comment
 
-ALL_CFLAGS = -I$(LOCAL)/include -I$(EXTERNAL_ROOT)/android-system-core/include
+ALL_CFLAGS = -I$(LOCAL)/include -I$(EXTERNAL_ROOT)/android-system-core/include -Wall
 ALL_LDFLAGS = -L$(LOCAL)/lib -Wl,--allow-shlib-undefined
 #ALL_LDFLAGS = -Wl,--entry=main,-rpath=$(ANDROID_NDK_ROOT)/build/platforms/android-$(NDK_PLATFORM_VER)/arch-arm/usr/lib,-dynamic-linker=/system/bin/linker -L$(NDK_SYSROOT)/usr/lib  -nostdlib -lc -ldl
 ALL_LIBS = -lc -ldl
