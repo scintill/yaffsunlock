@@ -17,14 +17,13 @@
 #define CHAR_START		0x20
 #define CHAR_END		0x7E
 
-struct keymap {
+struct {
 	unsigned char key;
 	int xpos;
 	int ypos;
 	int selected;
-};
+} keys[CHAR_END - CHAR_START];
 
-struct keymap keys[CHAR_END - CHAR_START];
 struct input_event keyqueue[2048];
 
 char passphrase[1024];
@@ -42,6 +41,15 @@ char *dev_userdata;
 char *mapname_sdcard;
 char *mapname_userdata;
 int userdata_is_whyaffs = 0;
+
+struct {
+	int shift_state;
+} keybd;
+
+static struct {
+	unsigned char ch;
+	unsigned char shift_ch;
+} keymapping[255];
 
 char *escape_input(char *str) {
 	size_t i, j = 0;
@@ -62,7 +70,7 @@ char *escape_input(char *str) {
 	return new;
 }
 
-void draw_keymap() {
+void draw_keygrid() {
 	size_t i;
 	char keybuf[2];
 
@@ -157,11 +165,11 @@ void draw_screen() {
 	gr_text(0, gr_fb_height() - CHAR_HEIGHT, "Press Voldown to erase");
 	gr_text(0, gr_fb_height(), "Press Power to boot with blank ramdisk");
 
-	draw_keymap();
+	draw_keygrid();
 	gr_flip();
 }
 
-void generate_keymap() {
+void generate_keygrid() {
 	int xpos, ypos;
 	char key;
 	int i;
@@ -248,7 +256,7 @@ void boot_with_ramdisk() {
 	exit(0);
 }
 
-void handle_key(struct input_event event) {
+void handle_input(struct input_event event) {
 	int cols;
 
 	cols = gr_fb_width() / (CHAR_WIDTH * 3);
@@ -286,11 +294,11 @@ void handle_key(struct input_event event) {
 		if(event.code == BTN_MOUSE) {
 			// Pressed joystick
 			snprintf(passphrase, sizeof(passphrase), "%s%c", passphrase, keys[current].key);
-		} else if(event.code == KEY_VOLUMEDOWN) {
-			// Pressed vol down
+		} else if(event.code == KEY_VOLUMEDOWN || event.code == KEY_BACKSPACE) {
+			// erase
 			passphrase[strlen(passphrase) - 1] = '\0';
-		} else if(event.code == KEY_VOLUMEUP) {
-			// Pressed vol up
+		} else if(event.code == KEY_VOLUMEUP || event.code == KEY_ENTER || event.code == KEY_KPENTER) {
+			// enter
 			if (unlock()) {
 				write_centered_text("Success!", 1);
 				gr_flip();
@@ -306,23 +314,32 @@ void handle_key(struct input_event event) {
 		} else if (event.code == KEY_POWER) {
 			// Power
 			boot_with_ramdisk();
+		} else {
+			// maybe a keyboard key, map to char
+			if (keymapping[event.code].ch) {
+				snprintf(passphrase, sizeof(passphrase), "%s%c", passphrase, !keybd.shift_state ? keymapping[event.code].ch : keymapping[event.code].shift_ch);
+			}
 		}
 	}
 
 	draw_screen();
 }
 
+void generate_keymapping();
+
 int main(int argc, char **argv, char **envp) {
 	struct input_event event;
 	pthread_t t;
-	unsigned int i, key_up = 0;
-	char buffer[512];
+	unsigned int i;
+
+	// initialize keyboard
+	keybd.shift_state = 0;
+	generate_keymapping();
 
 	ui_init();
 
 	if (argc != 7 && argc != 8) {
-		snprintf(buffer, sizeof(buffer), "%s not called correctly", argv[0]);
-		write_modal_status_text(buffer);
+		printf("%s not called correctly", argv[0]);
 		exit(255);
 	}
 
@@ -338,7 +355,7 @@ int main(int argc, char **argv, char **envp) {
 	}
 
 	// show UI
-	generate_keymap();
+	generate_keygrid();
 	draw_screen();
 
 	pthread_create(&t, NULL, input_thread, NULL);
@@ -362,18 +379,90 @@ int main(int argc, char **argv, char **envp) {
 
 		switch(event.type) {
 			case(EV_KEY):
-				if(key_up == 1) {
-					key_up = 0;
-					break;
+				if(event.code == KEY_LEFTSHIFT || event.code == KEY_RIGHTSHIFT) {
+					keybd.shift_state = event.value;
+				} else if(event.value == 0) { // release
+					handle_input(event);
 				}
-				key_up = 1;
-			case(EV_REL):
-				handle_key(event);
 				break;
-			case(EV_SYN):
+			case(EV_REL):
+				handle_input(event);
+				break;
+			default:
 				break;
 		}
 	}
 
 	return 0;
+}
+
+void generate_keymapping() {
+#define ADD_MAPPING(x, y, z) keymapping[x].ch = y; keymapping[x].shift_ch = z
+	ADD_MAPPING(KEY_1, '1', '!');
+	ADD_MAPPING(KEY_2, '2', '@');
+	ADD_MAPPING(KEY_3, '3', '#');
+	ADD_MAPPING(KEY_4, '4', '$');
+	ADD_MAPPING(KEY_5, '5', '%');
+	ADD_MAPPING(KEY_6, '6', '^');
+	ADD_MAPPING(KEY_7, '7', '&');
+	ADD_MAPPING(KEY_8, '8', '*');
+	ADD_MAPPING(KEY_9, '9', '(');
+	ADD_MAPPING(KEY_0, '0', ')');
+	ADD_MAPPING(KEY_KP1, '1', '1');
+	ADD_MAPPING(KEY_KP2, '2', '2');
+	ADD_MAPPING(KEY_KP3, '3', '3');
+	ADD_MAPPING(KEY_KP4, '4', '4');
+	ADD_MAPPING(KEY_KP5, '5', '5');
+	ADD_MAPPING(KEY_KP6, '6', '6');
+	ADD_MAPPING(KEY_KP7, '7', '7');
+	ADD_MAPPING(KEY_KP8, '8', '8');
+	ADD_MAPPING(KEY_KP9, '9', '9');
+	ADD_MAPPING(KEY_KP0, '0', '0');
+	ADD_MAPPING(KEY_MINUS, '-', '_');
+	ADD_MAPPING(KEY_EQUAL, '=', '+');
+	ADD_MAPPING(KEY_TAB, '\t', '\t');
+	ADD_MAPPING(KEY_Q, 'q', 'Q');
+	ADD_MAPPING(KEY_W, 'w', 'W');
+	ADD_MAPPING(KEY_E, 'e', 'E');
+	ADD_MAPPING(KEY_R, 'r', 'R');
+	ADD_MAPPING(KEY_T, 't', 'T');
+	ADD_MAPPING(KEY_Y, 'y', 'Y');
+	ADD_MAPPING(KEY_U, 'u', 'U');
+	ADD_MAPPING(KEY_I, 'i', 'I');
+	ADD_MAPPING(KEY_O, 'o', 'O');
+	ADD_MAPPING(KEY_P, 'p', 'P');
+	ADD_MAPPING(KEY_LEFTBRACE, '[', '{');
+	ADD_MAPPING(KEY_RIGHTBRACE, ']', '}');
+	ADD_MAPPING(KEY_A, 'a', 'A');
+	ADD_MAPPING(KEY_S, 's', 'S');
+	ADD_MAPPING(KEY_D, 'd', 'D');
+	ADD_MAPPING(KEY_F, 'f', 'F');
+	ADD_MAPPING(KEY_G, 'g', 'G');
+	ADD_MAPPING(KEY_H, 'h', 'H');
+	ADD_MAPPING(KEY_J, 'j', 'J');
+	ADD_MAPPING(KEY_K, 'k', 'K');
+	ADD_MAPPING(KEY_L, 'l', 'L');
+	ADD_MAPPING(KEY_SEMICOLON, ';', ':');
+	ADD_MAPPING(KEY_APOSTROPHE, '\'', '"');
+	ADD_MAPPING(KEY_GRAVE, '`', '~');
+	ADD_MAPPING(KEY_BACKSLASH, '\\', '|');
+	ADD_MAPPING(KEY_Z, 'z', 'Z');
+	ADD_MAPPING(KEY_X, 'x', 'X');
+	ADD_MAPPING(KEY_C, 'c', 'C');
+	ADD_MAPPING(KEY_V, 'v', 'V');
+	ADD_MAPPING(KEY_B, 'b', 'B');
+	ADD_MAPPING(KEY_N, 'n', 'N');
+	ADD_MAPPING(KEY_M, 'm', 'M');
+	ADD_MAPPING(KEY_COMMA, ',', '<');
+	ADD_MAPPING(KEY_DOT, '.', '>');
+	ADD_MAPPING(KEY_SLASH, '/', '?');
+	ADD_MAPPING(KEY_KPASTERISK, '*', '*');
+	ADD_MAPPING(KEY_SPACE, ' ', ' ');
+	ADD_MAPPING(KEY_KPMINUS, '-', '-');
+	ADD_MAPPING(KEY_KPPLUS, '+', '+');
+	ADD_MAPPING(KEY_KPDOT, '.', '.');
+	ADD_MAPPING(KEY_KPSLASH, '/', '/');
+	ADD_MAPPING(KEY_KPEQUAL, '=', '=');
+	ADD_MAPPING(KEY_KPCOMMA, ',', ',');
+#undef ADD_MAPPING
 }
