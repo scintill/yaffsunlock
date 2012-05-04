@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <pthread.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -24,12 +23,7 @@ struct {
 	int selected;
 } keys[CHAR_END - CHAR_START];
 
-struct input_event keyqueue[2048];
-
 char passphrase[1024];
-
-pthread_mutex_t keymutex;
-unsigned int sp = 0;
 
 gr_surface background;
 int res, current = 0;
@@ -89,48 +83,11 @@ void draw_keygrid() {
 	}
 }
 
-static void *input_thread() {
-	int rel_sum = 0;
-
-	for(;;) {
-		struct  input_event ev;
-
-		do {
-			ev_get(&ev, 0);
-
-			switch(ev.type) {
-				case EV_SYN:
-					continue;
-				case EV_REL:
-					rel_sum += ev.value;
-					break;
-
-				default:
-					rel_sum = 0;
-			}
-
-			if(rel_sum > 4 || rel_sum < -4)
-				break;
-
-		} while(ev.type != EV_KEY || ev.code > KEY_MAX);
-
-		rel_sum = 0;
-
-		// Add the key to the fifo
-		pthread_mutex_lock(&keymutex);
-		if(sp < (sizeof(keyqueue) / sizeof(struct input_event)))
-			sp++;
-
-		keyqueue[sp] = ev;
-		pthread_mutex_unlock(&keymutex);
-	}
-
-	return 0;
-}
+int on_input_event(int fd, short revents, void *data);
 
 void ui_init(void) {
 	gr_init();
-	ev_init();
+	ev_init(on_input_event, NULL);
 
 	// Generate bitmap from /system/res/padlock.png ( you can change the path in minui/resources.c)
 	res_create_surface("padlock", &background);
@@ -290,7 +247,10 @@ void handle_input(struct input_event event) {
 		}
 
 		keys[current].selected = 1;
-	} else if(event.type == EV_KEY) {
+	} else if(event.type == EV_KEY && (event.code == KEY_LEFTSHIFT || event.code == KEY_RIGHTSHIFT)) {
+		// shift key up/down
+		keybd.shift_state = event.value;
+	} else if(event.type == EV_KEY && event.value == 0) { // release
 		if(event.code == BTN_MOUSE) {
 			// Pressed joystick
 			snprintf(passphrase, sizeof(passphrase), "%s%c", passphrase, keys[current].key);
@@ -328,10 +288,6 @@ void handle_input(struct input_event event) {
 void generate_keymapping();
 
 int main(int argc, char **argv, char **envp) {
-	struct input_event event;
-	pthread_t t;
-	unsigned int i;
-
 	// initialize keyboard
 	keybd.shift_state = 0;
 	generate_keymapping();
@@ -358,39 +314,40 @@ int main(int argc, char **argv, char **envp) {
 	generate_keygrid();
 	draw_screen();
 
-	pthread_create(&t, NULL, input_thread, NULL);
-	pthread_mutex_init(&keymutex, NULL);
+	// wait forever to be exit()'d by input callbacks
+	for (;;) {
+		ev_wait(-1);
+		ev_dispatch();
+	}
 
-	for(;;) {
-		pthread_mutex_lock(&keymutex);
+	return 0;
+}
 
-		if(sp > 0) {
-			for(i = 0; i < sp; i++)
-				keyqueue[i] = keyqueue[i + 1];
+int on_input_event(int fd, short revents, void *data) {
+	static int rel_sum = 0;
 
-			event = keyqueue[0];
-			sp--;
+	struct  input_event ev;
 
-			pthread_mutex_unlock(&keymutex);
-		} else {
-			pthread_mutex_unlock(&keymutex);
-			continue;
-		}
+	if(ev_get_input(fd, revents, &ev) != -1) {
 
-		switch(event.type) {
-			case(EV_KEY):
-				if(event.code == KEY_LEFTSHIFT || event.code == KEY_RIGHTSHIFT) {
-					keybd.shift_state = event.value;
-				} else if(event.value == 0) { // release
-					handle_input(event);
-				}
+		switch(ev.type) {
+			case EV_SYN:
 				break;
-			case(EV_REL):
-				handle_input(event);
+			case EV_REL:
+				rel_sum += ev.value;
 				break;
+
 			default:
-				break;
+				rel_sum = 0;
 		}
+
+		if(ev.type == EV_KEY) {
+			handle_input(ev);
+		} else if(rel_sum > 4 || rel_sum < -4) {
+			handle_input(ev);
+			rel_sum = 0;
+		}
+
 	}
 
 	return 0;
