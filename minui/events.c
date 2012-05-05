@@ -74,7 +74,6 @@ int ev_init(ev_callback input_cb, void *data)
                 continue;
             }
 
-            printf("poll %s\n", de->d_name);
             ev_fds[ev_count].fd = fd;
             ev_fds[ev_count].events = POLLIN;
             ev_fdinfo[ev_count].cb = input_cb;
