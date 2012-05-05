@@ -215,7 +215,7 @@ void boot_with_ramdisk() {
 	exit(0);
 }
 
-void handle_input(struct input_event event) {
+void handle_input(struct input_event *pEvent) {
 	int cols;
 
 	cols = gr_fb_width() / CHAR_WIDTH;
@@ -226,12 +226,12 @@ void handle_input(struct input_event event) {
 	cols /= 3;
 
 	// Joystick
-	if(event.type == EV_REL && event.value != 0) {
+	if(pEvent->type == EV_REL && pEvent->value != 0) {
 		keys[current].selected = 0;
 
 		// down or up
-		if(event.code == REL_Y) {
-			if(event.value > 0) {
+		if(pEvent->code == REL_Y) {
+			if(pEvent->value > 0) {
 				if(current + cols < (CHAR_END - CHAR_START)) {
 					current += cols;
 				}
@@ -240,9 +240,9 @@ void handle_input(struct input_event event) {
 					current -= cols;
 				}
 			}
-		} else if(event.code == REL_X) {
+		} else if(pEvent->code == REL_X) {
 			// left or right
-			if(event.value > 0) {
+			if(pEvent->value > 0) {
 				if(current < (CHAR_END - CHAR_START) - 1) {
 					current++;
 				}
@@ -254,17 +254,17 @@ void handle_input(struct input_event event) {
 		}
 
 		keys[current].selected = 1;
-	} else if(event.type == EV_KEY && (event.code == KEY_LEFTSHIFT || event.code == KEY_RIGHTSHIFT)) {
+	} else if(pEvent->type == EV_KEY && (pEvent->code == KEY_LEFTSHIFT || pEvent->code == KEY_RIGHTSHIFT)) {
 		// shift key up/down
-		keybd.shift_state = event.value;
-	} else if(event.type == EV_KEY && event.value == 0) { // release
-		if(event.code == BTN_MOUSE) {
+		keybd.shift_state = pEvent->value;
+	} else if(pEvent->type == EV_KEY && pEvent->value == 0) { // release
+		if(pEvent->code == BTN_MOUSE) {
 			// Pressed joystick
 			snprintf(passphrase, sizeof(passphrase), "%s%c", passphrase, keys[current].key);
-		} else if(event.code == KEY_VOLUMEDOWN || event.code == KEY_BACKSPACE) {
+		} else if(pEvent->code == KEY_VOLUMEDOWN || pEvent->code == KEY_BACKSPACE) {
 			// erase
 			passphrase[strlen(passphrase) - 1] = '\0';
-		} else if(event.code == KEY_VOLUMEUP || event.code == KEY_ENTER || event.code == KEY_KPENTER) {
+		} else if(pEvent->code == KEY_VOLUMEUP || pEvent->code == KEY_ENTER || pEvent->code == KEY_KPENTER) {
 			// enter
 			if (unlock()) {
 				write_centered_text("Success!", 1);
@@ -278,13 +278,13 @@ void handle_input(struct input_event event) {
 				passphrase[0] = '\0';
 			}
 
-		} else if (event.code == KEY_POWER) {
+		} else if (pEvent->code == KEY_POWER) {
 			// Power
 			boot_with_ramdisk();
 		} else {
 			// maybe a keyboard key, map to char
-			if (keymapping[event.code].ch) {
-				snprintf(passphrase, sizeof(passphrase), "%s%c", passphrase, !keybd.shift_state ? keymapping[event.code].ch : keymapping[event.code].shift_ch);
+			if (keymapping[pEvent->code].ch) {
+				snprintf(passphrase, sizeof(passphrase), "%s%c", passphrase, !keybd.shift_state ? keymapping[pEvent->code].ch : keymapping[pEvent->code].shift_ch);
 			}
 		}
 	}
@@ -360,9 +360,9 @@ int on_input_event(int fd, short revents, void *data) {
 		}
 
 		if(ev.type == EV_KEY) {
-			handle_input(ev);
+			handle_input(&ev);
 		} else if(abs(rel_x_sum) > ROLL_THRESHOLD || abs(rel_y_sum) > ROLL_THRESHOLD) {
-			handle_input(ev);
+			handle_input(&ev);
 			if (ev.code == REL_X) {
 				rel_x_sum = 0;
 			} else if (ev.code == REL_Y) {
