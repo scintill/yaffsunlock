@@ -302,7 +302,7 @@ int main(int argc, char **argv, char **envp) {
 	ui_init();
 
 	if (argc != 7 && argc != 8) {
-		printf("%s not called correctly", argv[0]);
+		printf("%s usage: path-to-cryptsetup path-to-mount sdcard-device sdcard-mapname userdata-device userdata-mapname [\"whisperyaffs\"]", argv[0]);
 		exit(255);
 	}
 
