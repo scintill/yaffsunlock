@@ -16,6 +16,8 @@
 #define CHAR_START		0x20
 #define CHAR_END		0x7E
 
+#define ROLL_THRESHOLD	4
+
 struct {
 	unsigned char key;
 	int xpos;
@@ -329,9 +331,10 @@ int main(int argc, char **argv, char **envp) {
 }
 
 int on_input_event(int fd, short revents, void *data) {
-	static int rel_sum = 0;
+	static int rel_x_sum = 0, rel_y_sum = 0;
+	static struct timeval last_rel_time = { 0 };
 
-	struct  input_event ev;
+	struct input_event ev;
 
 	if(ev_get_input(fd, revents, &ev) != -1) {
 
@@ -339,18 +342,32 @@ int on_input_event(int fd, short revents, void *data) {
 			case EV_SYN:
 				break;
 			case EV_REL:
-				rel_sum += ev.value;
+				// if it's been awhile since last roll event, reset threshold
+				if ((((ev.time.tv_sec - last_rel_time.tv_sec) * 1000000) +
+					ev.time.tv_usec - last_rel_time.tv_usec) > 350000) { // 350 milliseconds
+					rel_x_sum = rel_y_sum = 0;
+				}
+				last_rel_time = ev.time;
+				if (ev.code == REL_X) {
+					rel_x_sum += ev.value;
+				} else if (ev.code == REL_Y) {
+					rel_y_sum += ev.value;
+				}
 				break;
 
 			default:
-				rel_sum = 0;
+				rel_x_sum = rel_y_sum = 0;
 		}
 
 		if(ev.type == EV_KEY) {
 			handle_input(ev);
-		} else if(rel_sum > 4 || rel_sum < -4) {
+		} else if(abs(rel_x_sum) > ROLL_THRESHOLD || abs(rel_y_sum) > ROLL_THRESHOLD) {
 			handle_input(ev);
-			rel_sum = 0;
+			if (ev.code == REL_X) {
+				rel_x_sum = 0;
+			} else if (ev.code == REL_Y) {
+				rel_y_sum = 0;
+			}
 		}
 
 	}
