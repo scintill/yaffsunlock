@@ -216,7 +216,12 @@ void boot_with_ramdisk() {
 void handle_input(struct input_event event) {
 	int cols;
 
-	cols = gr_fb_width() / (CHAR_WIDTH * 3);
+	cols = gr_fb_width() / CHAR_WIDTH;
+	// round up since the full three-char column may not fit, but it counts
+	if (cols % 3) {
+		cols += 3;
+	}
+	cols /= 3;
 
 	// Joystick
 	if(event.type == EV_REL && event.value != 0) {
