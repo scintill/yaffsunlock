@@ -28,15 +28,11 @@ struct {
 char passphrase[1024];
 
 gr_surface background;
-int res, current = 0;
+int res = 0, current = 0;
 
-char *cmd_cryptsetup;
 char *cmd_mount;
-char *dev_sdcard;
-char *dev_userdata;
-char *mapname_sdcard;
-char *mapname_userdata;
-int userdata_is_whyaffs = 0;
+char *yaffs_dev;
+char *yaffs_mountpoint;
 
 struct {
 	int shift_state;
@@ -92,7 +88,9 @@ void ui_init(void) {
 	ev_init(on_input_event, NULL);
 
 	// Generate bitmap from /system/res/padlock.png ( you can change the path in minui/resources.c)
-	res_create_surface("padlock", &background);
+	if (res_create_surface("padlock", &background) >= 0) {
+        res = 1;
+    }
 }
 
 void draw_screen() {
@@ -102,12 +100,14 @@ void draw_screen() {
 	gr_color(255, 255, 255, 255);
 	gr_fill(0, 0, gr_fb_width(), gr_fb_height());
 
-	bgwidth = gr_get_width(background);
-	bgheight = gr_get_height(background);
-	bgxpos = (gr_fb_width() - gr_get_width(background)) / 2;
-	bgypos = (gr_fb_height() - gr_get_height(background)) / 2;
+    if (res) {
+        bgwidth = gr_get_width(background);
+        bgheight = gr_get_height(background);
+        bgxpos = (gr_fb_width() - gr_get_width(background)) / 2;
+        bgypos = (gr_fb_height() - gr_get_height(background)) / 2;
 
-	gr_blit(background, 0, 0, bgwidth, bgheight, bgxpos, bgypos);
+        gr_blit(background, 0, 0, bgwidth, bgheight, bgxpos, bgypos);
+    }
 
 	gr_color(0, 0, 0, 255);
 	gr_text(0, CHAR_HEIGHT, "Enter unlock phrase: ");
@@ -165,41 +165,15 @@ void write_modal_status_text(char *text) {
 	gr_flip();
 }
 
-int check_file_exists(char *name) {
-	struct stat buf;
-
-	return stat(name, &buf) != -1 || errno != ENOENT;
-}
-
 int unlock() {
 	char buffer[2048];
 
 	write_modal_status_text("Unlocking...");
 
-	// sdcard
-	snprintf(buffer, sizeof(buffer), "echo %s | %s luksOpen %s %s", escape_input(passphrase), cmd_cryptsetup, dev_sdcard, mapname_sdcard);
-	system(buffer);
-
-	snprintf(buffer, sizeof(buffer), "/dev/mapper/%s", mapname_sdcard);
-	if(!check_file_exists(buffer)) {
-		return 0;
-	}
-
-	// userdata
-	if (!userdata_is_whyaffs) {
-		snprintf(buffer, sizeof(buffer), "echo %s | %s luksOpen %s %s", escape_input(passphrase), cmd_cryptsetup, dev_userdata, mapname_userdata);
-		system(buffer);
-
-		snprintf(buffer, sizeof(buffer), "/dev/mapper/%s", mapname_userdata);
-		if(!check_file_exists(buffer)) {
-			return 0;
-		}
-	} else {
-		snprintf(buffer, sizeof(buffer), "%s -t yaffs2 -o nosuid,nodev,relatime,unlock_encrypted=%s %s %s", cmd_mount, escape_input(passphrase), dev_userdata, mapname_userdata);
-		if (system(buffer) != 0) {
-			return 0;
-		}
-	}
+    snprintf(buffer, sizeof(buffer), "%s -t yaffs2 -o nosuid,nodev,relatime,unlock_encrypted=%s %s %s", cmd_mount, escape_input(passphrase), yaffs_dev, yaffs_mountpoint);
+    if (system(buffer) != 0) {
+        return 0;
+    }
 
 	return 1;
 }
@@ -301,21 +275,15 @@ int main(int argc, char **argv, char **envp) {
 
 	ui_init();
 
-	if (argc != 7 && argc != 8) {
-		printf("%s usage: path-to-cryptsetup path-to-mount sdcard-device sdcard-mapname userdata-device userdata-mapname [\"whisperyaffs\"]", argv[0]);
+	if (argc != 4) {
+		printf("%s usage: path-to-mount whisper-yaffs-device whisper-yaffs-mountpoint", argv[0]);
 		exit(255);
 	}
 
 	// save configuration params
-	cmd_cryptsetup = argv[1];
-	cmd_mount = argv[2];
-	dev_sdcard = argv[3];
-	mapname_sdcard = argv[4];
-	dev_userdata = argv[5];
-	mapname_userdata = argv[6];
-	if (argc == 8 && 0 == strcasecmp("whisperyaffs", argv[7])) {
-		userdata_is_whyaffs = 1;
-	}
+	cmd_mount = argv[1];
+	yaffs_dev = argv[2];
+	yaffs_mountpoint = argv[3];
 
 	// show UI
 	generate_keygrid();

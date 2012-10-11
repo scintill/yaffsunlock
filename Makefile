@@ -49,18 +49,18 @@ ALL_LDFLAGS = -L$(LOCAL)/lib -Wl,--allow-shlib-undefined
 ALL_LIBS = -lc -ldl
 
 
-SOURCES = luksunlock.c minui/events.c minui/graphics.c minui/resources.c
+SOURCES = yaffsunlock.c minui/events.c minui/graphics.c minui/resources.c
 OBJECTS := $(SOURCES:.c=.o)
 
-all: luksunlock
+all: yaffsunlock
 
 %.o: %.c
 	$(CC) $(ALL_CFLAGS) $(CFLAGS) -o "$*.o" -c "$*.c"
 
-luksunlock: $(OBJECTS)
-	$(CC) $(ALL_LDFLAGS) $(LDFLAGS) -o luksunlock $^ \
+yaffsunlock: $(OBJECTS)
+	$(CC) $(ALL_LDFLAGS) $(LDFLAGS) -o yaffsunlock $^ \
 		$(LOCAL)/lib/libpng.a -lz -llog -lpixelflinger
 
 
 clean:
-	rm -f luksunlock $(OBJECTS)
+	rm -f yaffsunlock $(OBJECTS)
