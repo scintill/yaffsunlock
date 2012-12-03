@@ -22,7 +22,7 @@
 typedef void* gr_surface;
 typedef unsigned short gr_pixel;
 
-int gr_init(void);
+int gr_init(bool rotate);
 void gr_exit(void);
 
 int gr_fb_width(void);

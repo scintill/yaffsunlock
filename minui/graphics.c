@@ -66,6 +66,8 @@ static unsigned gr_active_fb = 0;
 static int gr_fb_fd = -1;
 static int gr_vt_fd = -1;
 
+static bool rotate_cw = 0;
+
 static struct fb_var_screeninfo vi;
 static struct fb_fix_screeninfo fi;
 
@@ -157,10 +159,17 @@ static int get_framebuffer(GGLSurface *fb)
 
 static void get_memory_surface(GGLSurface* ms) {
   ms->version = sizeof(*ms);
-  ms->width = vi.xres;
-  ms->height = vi.yres;
-  ms->stride = fi.line_length/PIXEL_SIZE;
-  ms->data = malloc(fi.line_length * vi.yres);
+  if (!rotate_cw) {
+      ms->width = vi.xres;
+      ms->height = vi.yres;
+      ms->stride = fi.line_length/PIXEL_SIZE;
+      ms->data = malloc(fi.line_length * vi.yres);
+  } else {
+      ms->width = vi.yres;
+      ms->height = vi.xres;
+      ms->stride = vi.yres;
+      ms->data = malloc(ms->height * ms->stride * PIXEL_SIZE);
+  }
   ms->format = PIXEL_FORMAT;
 }
 
@@ -184,8 +193,24 @@ void gr_flip(void)
 
     /* copy data from the in-memory surface to the buffer we're about
      * to make active. */
-    memcpy(gr_framebuffer[gr_active_fb].data, gr_mem_surface.data,
-           fi.line_length * vi.yres);
+    if (!rotate_cw) {
+        memcpy(gr_framebuffer[gr_active_fb].data, gr_mem_surface.data,
+               fi.line_length * vi.yres);
+    } else {
+        // TODO make this faster? this is horribly inefficient, but I don't exactly need high FPS
+        int y, x;
+#if PIXEL_SIZE == 2
+        for (y = 0; y < gr_mem_surface.height; y++) {
+            for (x = 0; x < gr_mem_surface.width; x++) {
+                ((unsigned short *)gr_framebuffer[gr_active_fb].data)
+                    [(gr_framebuffer[gr_active_fb].height-1-x) * gr_framebuffer[gr_active_fb].stride + y] =
+                  ((unsigned short *)gr_mem_surface.data)[y * gr_mem_surface.stride + x];
+            }
+        }
+#else
+#error "rewrite this rotation code for the pixel size you have"
+#endif
+    }
 
     /* inform the display driver */
     set_active_framebuffer(gr_active_fb);
@@ -237,6 +262,7 @@ int gr_text(int x, int y, const char *s)
     }
 
     return x;
+    // TODO
 }
 
 void gr_fill(int x, int y, int w, int h)
@@ -304,8 +330,10 @@ static void gr_init_font(void)
     gr_font->ascent = font.cheight - 2;
 }
 
-int gr_init(void)
+int gr_init(bool rotate)
 {
+    rotate_cw = rotate;
+
     gglInit(&gr_context);
     GGLContext *gl = gr_context;
 
@@ -361,12 +389,20 @@ void gr_exit(void)
 
 int gr_fb_width(void)
 {
-    return gr_framebuffer[0].width;
+    if (!rotate_cw) {
+        return gr_framebuffer[0].width;
+    } else {
+        return gr_framebuffer[0].height;
+    }
 }
 
 int gr_fb_height(void)
 {
-    return gr_framebuffer[0].height;
+    if (!rotate_cw) {
+        return gr_framebuffer[0].height;
+    } else {
+        return gr_framebuffer[0].width;
+    }
 }
 
 gr_pixel *gr_fb_data(void)
