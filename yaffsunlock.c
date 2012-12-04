@@ -10,6 +10,8 @@
 
 #include "minui/minui.h"
 
+//#define TOUCH_DEBUGGING_ENABLED
+
 // not sure what to call this, but on my Nexus One it looks like touches are captured at 8x screen res
 #define TOUCH_RESOLUTION 8
 
@@ -45,11 +47,16 @@ keymap soft_keymap[4];
 
 typedef struct {
     unsigned char code;
-    unsigned short int x;
-    unsigned short int y;
+    unsigned short int x, y, width, height;
 } soft_keypos;
 
 soft_keypos soft_keybd_top_row[10], soft_keybd_middle_row[9], soft_keybd_middle_row_wide[10], soft_keybd_bottom_row[9], soft_keybd_space_row[5];
+
+#ifdef TOUCH_DEBUGGING_ENABLED
+int debug_touch_x, debug_touch_y;
+#endif
+
+int hide_all_passphrase_chars;
 
 char *escape_input(char *str) {
     size_t i, j = 0;
@@ -86,24 +93,47 @@ void draw_screen() {
     int cols, i;
 
     gr_color(255, 255, 255, 255);
-    gr_fill(0, 0, FB_WIDTH, FB_HEIGHT);
+    gr_fill(0, 0, FB_WIDTH, SOFTKEYBD_TOP);
 
-    gr_blit(img_softkeybd[soft_keybd.shift_state], 0, 0, 800, 260, 0, SOFTKEYBD_TOP);
+    if (img_softkeybd[soft_keybd.shift_state]) { // will be 0 iff loading failed
+        gr_blit(img_softkeybd[soft_keybd.shift_state], 0, 0, 800, 260, 0, SOFTKEYBD_TOP);
+    }
 
     gr_color(0, 0, 0, 255);
     gr_text(0, CHAR_HEIGHT, "Enter unlock phrase: ");
 
     gr_color(255, 0, 0, 255);
     gr_text(0, 6 * CHAR_HEIGHT, "Press Power to boot with blank ramdisk");
+    if (!hide_all_passphrase_chars) {
+        gr_text(0, 7 * CHAR_HEIGHT, "Press Volume Down to hide all passphrase chars");
+    }
 
     gr_color(0, 0, 0, 255);
     cols = FB_WIDTH / CHAR_WIDTH;
 
-    for(i = 0; i < (int) strlen(passphrase); i++)
-        gr_text(i * CHAR_WIDTH, CHAR_HEIGHT * 2, "*");
+    for(i = 1; i < strlen(passphrase); i++) {
+        gr_text((i-1) * CHAR_WIDTH, CHAR_HEIGHT * 2, "*");
+    }
+    if (passphrase[0]) {
+        if (!hide_all_passphrase_chars) {
+            gr_text((i-1) * CHAR_WIDTH, CHAR_HEIGHT * 2, &passphrase[i-1]); // show last char
+        } else {
+            gr_text((i-1) * CHAR_WIDTH, CHAR_HEIGHT * 2, "*");
+        }
+    } else {
+        i--;
+    }
 
-    for(; i < cols - 1; i++)
+    for(; i < cols - 1; i++) {
         gr_text(i * CHAR_WIDTH, CHAR_HEIGHT * 2, "_");
+    }
+
+#ifdef TOUCH_DEBUGGING_ENABLED
+    gr_color(255, 0, 0, 255);
+    gr_fill(debug_touch_x-32, debug_touch_y-32, debug_touch_x+32, debug_touch_y+32);
+    gr_color(0, 255, 0, 255);
+    gr_fill(debug_touch_x-4, debug_touch_y-4, debug_touch_x+4, debug_touch_y+4);
+#endif
 
     gr_flip();
 }
@@ -145,7 +175,7 @@ void boot_with_ramdisk() {
     exit(0);
 }
 
-bool handle_password_key(int keycode, keymap *keymap, int shift_state) {
+bool handle_passphrase_key(int keycode, keymap *keymap, int shift_state) {
     if (keycode == KEY_BACKSPACE) {
         passphrase[strlen(passphrase) - 1] = '\0';
         return true;
@@ -176,7 +206,7 @@ bool handle_password_key(int keycode, keymap *keymap, int shift_state) {
 bool on_touch(int x, int y, int down);
 
 // Raw input events come in here. Manages the hard keyboard state, a few state changes of the app.
-// Dispatches password keystrokes and touch events elsewhere.
+// Dispatches passphrase keystrokes and touch events elsewhere.
 bool handle_input(struct input_event *pEvent) {
     static int partial_touch_x = -1, partial_touch_y = -1;
     static bool partial_touch_down = 0;
@@ -189,12 +219,15 @@ bool handle_input(struct input_event *pEvent) {
             partial_touch_down = !!pEvent->value;
         } else if(pEvent->value == 0) {
             // key release
-            if (pEvent->code == KEY_POWER) {
+            if (pEvent->code == KEY_VOLUMEDOWN) {
+                hide_all_passphrase_chars = 1;
+                return true;
+            } else if (pEvent->code == KEY_POWER) {
                 // Power
                 boot_with_ramdisk();
             } else {
                 // probably a typed character
-                return handle_password_key(pEvent->code, hard_keymap, hard_keybd.shift_state);
+                return handle_passphrase_key(pEvent->code, hard_keymap, hard_keybd.shift_state);
             }
         }
     } else if(pEvent->type == EV_ABS) {
@@ -207,8 +240,13 @@ bool handle_input(struct input_event *pEvent) {
     } else if(pEvent->type == EV_SYN && pEvent->code == SYN_REPORT) {
         // touch screen - commit event data
         // transform touch coords since we've rotated the screen
-        return on_touch(FB_WIDTH-1-(partial_touch_y / TOUCH_RESOLUTION),
+        bool ret = on_touch(FB_WIDTH-1-(partial_touch_y / TOUCH_RESOLUTION),
                  (partial_touch_x / TOUCH_RESOLUTION), partial_touch_down);
+#ifndef TOUCH_DEBUGGING_ENABLED
+        return ret;
+#else
+        return true;
+#endif
     }
 
     return false;
@@ -218,6 +256,11 @@ int find_softkey_code(int x, int y);
 
 bool on_touch(int x, int y, int down) {
     static int down_code = 0;
+
+#ifdef TOUCH_DEBUGGING_ENABLED
+    debug_touch_x = x;
+    debug_touch_y = y;
+#endif
 
     // make keymap coords relative to keyboard, not whole screen
     y -= SOFTKEYBD_TOP;
@@ -230,7 +273,7 @@ bool on_touch(int x, int y, int down) {
      * fast-and-loose (mis)handling of input events, but to hack around it, just ignore
      * events that seem to be coming at the wrong time.
      */
-    if (down && !down_code) {
+    if (down) {
         down_code = find_softkey_code(x, y);
     } else if (!down && down_code) {
         int up_code = find_softkey_code(x, y);
@@ -246,7 +289,7 @@ bool on_touch(int x, int y, int down) {
                 else { soft_keybd.shift_state = SHIFT_STATE_NONE; }
                 return true;
             } else {
-                bool ret = handle_password_key(up_code, soft_keymap, soft_keybd.shift_state);
+                bool ret = handle_passphrase_key(up_code, soft_keymap, soft_keybd.shift_state);
                 // always undo shift on soft keyboard. this may not match how real Android soft keyboard works
                 soft_keybd.shift_state = SHIFT_STATE_NONE;
                 return ret;
@@ -414,33 +457,31 @@ void generate_keymappings() {
 
     // soft key coordinates
     int i, x;
-#define ADD_MAPPING(a, i, _y, _x, _code) a[i].y = _y; a[i].x = _x; a[i].code = _code;
-    for (i = 0, x = 4; x < 800; x += 80, i++) { ADD_MAPPING(soft_keybd_top_row, i, 2, x, KEY_Q + i); }
+#define ADD_MAPPING(a, i, _y, _x, h, w, _code) a[i].y = _y; a[i].x = _x; a[i].width = w; a[i].height = h; a[i].code = _code;
+    for (i = 0, x = 4; x < 800; x += 80, i++) { ADD_MAPPING(soft_keybd_top_row, i, 2, x, 53, 72, KEY_Q + i); }
 
-    for (i = 0, x = 44; x < 800; x += 80, i++) { ADD_MAPPING(soft_keybd_middle_row, i, 70, x, KEY_A + i); }
+    for (i = 0, x = 44; x < 800; x += 80, i++) { ADD_MAPPING(soft_keybd_middle_row, i, 70, x, 53, 72, KEY_A + i); }
 
-    for (i = 0, x = 4; x < 800; x += 80, i++) { ADD_MAPPING(soft_keybd_middle_row_wide, i, 70, x, KEY_A + i); }
+    for (i = 0, x = 4; x < 800; x += 80, i++) { ADD_MAPPING(soft_keybd_middle_row_wide, i, 70, x, 53, 72, KEY_A + i); }
 
-    ADD_MAPPING(soft_keybd_bottom_row, 0, 138, 4, KEY_LEFTSHIFT);
-    for (i = 1, x = 124; x < 684; x += 80, i++) { ADD_MAPPING(soft_keybd_bottom_row, i, 138, x, KEY_Z + i - 1); }
-    ADD_MAPPING(soft_keybd_bottom_row, i, 138, 684, KEY_BACKSPACE);
+    ADD_MAPPING(soft_keybd_bottom_row, 0, 138, 4, 53, 112, KEY_LEFTSHIFT);
+    for (i = 1, x = 124; x < 684; x += 80, i++) { ADD_MAPPING(soft_keybd_bottom_row, i, 138, x, 53, 72, KEY_Z + i - 1); }
+    ADD_MAPPING(soft_keybd_bottom_row, i, 138, 684, 53, 112, KEY_BACKSPACE);
 
-    ADD_MAPPING(soft_keybd_space_row, 0, 206, 4, KEY_RIGHTSHIFT);
-    ADD_MAPPING(soft_keybd_space_row, 1, 206, 204, KEY_COMMA);
-    ADD_MAPPING(soft_keybd_space_row, 2, 206, 284, KEY_SPACE);
-    ADD_MAPPING(soft_keybd_space_row, 3, 206, 524, KEY_DOT);
-    ADD_MAPPING(soft_keybd_space_row, 4, 206, 604, KEY_ENTER);
+    ADD_MAPPING(soft_keybd_space_row, 0, 206, 4, 53, 112, KEY_RIGHTSHIFT);
+    ADD_MAPPING(soft_keybd_space_row, 1, 206, 204, 53, 72, KEY_COMMA);
+    ADD_MAPPING(soft_keybd_space_row, 2, 206, 284, 53, 232, KEY_SPACE);
+    ADD_MAPPING(soft_keybd_space_row, 3, 206, 524, 53, 72, KEY_DOT);
+    ADD_MAPPING(soft_keybd_space_row, 4, 206, 604, 53, 192, KEY_ENTER);
 #undef ADD_MAPPING
 }
 
 int find_softkey_code(int x, int y) {
-#define BUTTON_WIDTH 72
-#define BUTTON_HEIGHT 53
     int i;
 
 #define SEARCH(arr) \
     for (i = 0; i < sizeof(arr)/sizeof(arr[0]); i++) { \
-        if (x >= arr[i].x && x <= (arr[i].x + BUTTON_WIDTH) && y >= arr[i].y && y <= (arr[i].y + BUTTON_HEIGHT)) { \
+        if (x >= arr[i].x && y >= arr[i].y && x < (arr[i].x+arr[i].width) && y < (arr[i].y+arr[i].height)) { \
             return arr[i].code; \
         } \
         if (arr[i].x > x) { \
@@ -459,7 +500,5 @@ int find_softkey_code(int x, int y) {
     SEARCH(soft_keybd_space_row);
 
     return 0;
-#undef BUTTON_WIDTH
-#undef BUTTON_HEIGHT
 #undef SEARCH
 }
