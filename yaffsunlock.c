@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <linux/input.h>
+#include <assert.h>
 
 #include "minui/minui.h"
 
@@ -79,9 +80,16 @@ char *escape_input(char *str) {
 
 int on_input_event(int fd, short revents, void *data);
 
-void ui_init(void) {
+void on_exit() {
+    ev_exit();
+    gr_exit();
+}
+
+void ui_init() {
     gr_init(true);
     ev_init(on_input_event, NULL);
+
+    atexit(on_exit);
 
     res_create_surface("softkeyboard1", &img_softkeybd[0]);
     res_create_surface("softkeyboard2", &img_softkeybd[1]);
@@ -350,6 +358,8 @@ int on_input_event(int fd, short revents, void *data) {
     return 0;
 }
 
+#define lengthof(a)  (sizeof(a)/sizeof(a[0]))
+
 void generate_keymappings() {
     // hard keyboard
 #define ADD_MAPPING(k, a, b) hard_keymap[0].code_to_ch[k] = a; hard_keymap[1].code_to_ch[k] = b;
@@ -457,16 +467,16 @@ void generate_keymappings() {
 
     // soft key coordinates
     int i, x;
-#define ADD_MAPPING(a, i, _y, _x, h, w, _code) a[i].y = _y; a[i].x = _x; a[i].width = w; a[i].height = h; a[i].code = _code;
-    for (i = 0, x = 4; x < 800; x += 80, i++) { ADD_MAPPING(soft_keybd_top_row, i, 2, x, 53, 72, KEY_Q + i); }
+#define ADD_MAPPING(a, i, _y, _x, h, w, _code) assert(i < lengthof(a)); a[i].y = _y; a[i].x = _x; a[i].width = w; a[i].height = h; a[i].code = _code;
+    for (i = 0, x = 4; i < lengthof(soft_keybd_top_row); x += 80, i++) { ADD_MAPPING(soft_keybd_top_row, i, 2, x, 53, 72, KEY_Q + i); }
 
-    for (i = 0, x = 44; x < 800; x += 80, i++) { ADD_MAPPING(soft_keybd_middle_row, i, 70, x, 53, 72, KEY_A + i); }
+    for (i = 0, x = 44; i < lengthof(soft_keybd_middle_row); x += 80, i++) { ADD_MAPPING(soft_keybd_middle_row, i, 70, x, 53, 72, KEY_A + i); }
 
-    for (i = 0, x = 4; x < 800; x += 80, i++) { ADD_MAPPING(soft_keybd_middle_row_wide, i, 70, x, 53, 72, KEY_A + i); }
+    for (i = 0, x = 4; x < lengthof(soft_keybd_middle_row_wide); x += 80, i++) { ADD_MAPPING(soft_keybd_middle_row_wide, i, 70, x, 53, 72, KEY_A + i); }
 
     ADD_MAPPING(soft_keybd_bottom_row, 0, 138, 4, 53, 112, KEY_LEFTSHIFT);
-    for (i = 1, x = 124; x < 684; x += 80, i++) { ADD_MAPPING(soft_keybd_bottom_row, i, 138, x, 53, 72, KEY_Z + i - 1); }
-    ADD_MAPPING(soft_keybd_bottom_row, i, 138, 684, 53, 112, KEY_BACKSPACE);
+    for (i = 1, x = 124; i < lengthof(soft_keybd_bottom_row); x += 80, i++) { ADD_MAPPING(soft_keybd_bottom_row, i, 138, x, 53, 72, KEY_Z + i - 1); }
+    ADD_MAPPING(soft_keybd_bottom_row, i-1, 138, 684, 53, 112, KEY_BACKSPACE);
 
     ADD_MAPPING(soft_keybd_space_row, 0, 206, 4, 53, 112, KEY_RIGHTSHIFT);
     ADD_MAPPING(soft_keybd_space_row, 1, 206, 204, 53, 72, KEY_COMMA);
@@ -480,7 +490,7 @@ int find_softkey_code(int x, int y) {
     int i;
 
 #define SEARCH(arr) \
-    for (i = 0; i < sizeof(arr)/sizeof(arr[0]); i++) { \
+    for (i = 0; i < lengthof(arr); i++) { \
         if (x >= arr[i].x && y >= arr[i].y && x < (arr[i].x+arr[i].width) && y < (arr[i].y+arr[i].height)) { \
             return arr[i].code; \
         } \
