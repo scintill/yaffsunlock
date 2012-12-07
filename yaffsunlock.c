@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/resource.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <linux/input.h>
@@ -59,6 +60,9 @@ int debug_touch_x, debug_touch_y;
 
 int hide_all_passphrase_chars;
 
+void *guaranteed_memset(void *v,int c,size_t n);
+
+// caller should free() after scrubbing, if secret
 char *escape_input(char *str) {
     size_t i, j = 0;
     char *new = malloc(sizeof(char) * (strlen(str) * 2 + 1));
@@ -81,6 +85,8 @@ char *escape_input(char *str) {
 int on_input_event(int fd, short revents, void *data);
 
 void on_exit() {
+    guaranteed_memset(passphrase, 0, sizeof(passphrase));
+
     ev_exit();
     gr_exit();
 }
@@ -161,15 +167,21 @@ void write_modal_status_text(char *text) {
 
 int unlock() {
     char buffer[2048];
+    int ret;
+    char *esc_passphrase;
 
     write_modal_status_text("Unlocking...");
 
-    snprintf(buffer, sizeof(buffer), "%s -t yaffs2 -o nosuid,nodev,relatime,unlock_encrypted=%s %s %s", cmd_mount, escape_input(passphrase), yaffs_dev, yaffs_mountpoint);
-    if (system(buffer) != 0) {
-        return 0;
-    }
+    esc_passphrase = escape_input(passphrase);
+    snprintf(buffer, sizeof(buffer), "%s -t yaffs2 -o nosuid,nodev,relatime,unlock_encrypted=%s %s %s", cmd_mount, esc_passphrase, yaffs_dev, yaffs_mountpoint);
 
-    return 1;
+    ret = system(buffer);
+
+    guaranteed_memset(esc_passphrase, 0, strlen(esc_passphrase));
+    free(esc_passphrase);
+    guaranteed_memset(buffer, 0, sizeof(buffer));
+
+    return ret == 0;
 }
 
 void boot_with_ramdisk() {
@@ -316,6 +328,8 @@ int main(int argc, char **argv, char **envp) {
         printf("%s usage: path-to-mount whisper-yaffs-device whisper-yaffs-mountpoint", argv[0]);
         exit(255);
     }
+
+    setrlimit(RLIMIT_CORE, 0); // stop creation of core dumps that could have secrets
 
     // save configuration params
     cmd_mount = argv[1];
@@ -512,3 +526,6 @@ int find_softkey_code(int x, int y) {
     return 0;
 #undef SEARCH
 }
+
+// http://www.dwheeler.com/secure-programs/Secure-Programs-HOWTO/protect-secrets.html
+void *guaranteed_memset(void *v,int c,size_t n) { volatile char *p=v; while (n--) *p++=c; return v; }
