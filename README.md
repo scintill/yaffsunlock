@@ -33,9 +33,7 @@ Here's the current general idea for building:
     make -C external libpng-install
     make
 
-Todos?
+Todos
 --------
 
-- make the interface less horrible
-- add "destroy" ability (key wipe)
-- allow it to boot up with a prepared unencrypted ramdisk image, for ease of use in emergencies etc, or "plausible deniability"
+- implement plans detailed in the [wiki](https://github.com/scintill/yaffsunlock/wiki) to make this a much fuller-featured Android encryption system
