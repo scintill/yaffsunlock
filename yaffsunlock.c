@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <linux/input.h>
 #include <assert.h>
+#include <sys/wait.h>
 
 #include "minui/minui.h"
 
@@ -26,7 +27,7 @@ char passphrase[1024];
 
 gr_surface img_softkeybd[4];
 
-char *cmd_templ_passphrase;
+char **cmd_passphrase_argv;
 char *cmd_mountramdisk;
 
 #define SHIFT_STATE_NONE 0
@@ -57,29 +58,9 @@ soft_keypos soft_keybd_top_row[10], soft_keybd_middle_row[9], soft_keybd_middle_
 int debug_touch_x, debug_touch_y;
 #endif
 
-int hide_all_passphrase_chars;
+bool hide_all_passphrase_chars;
 
 void *guaranteed_memset(void *v,int c,size_t n);
-
-// caller should free() after scrubbing, if secret
-char *escape_input(char *str) {
-    size_t i, j = 0;
-    char *new = malloc(sizeof(char) * (strlen(str) * 2 + 1));
-
-    for(i = 0; i < strlen(str); i++) {
-        if(!(((str[i] >= 'A') && (str[i] <= 'Z')) ||
-        ((str[i] >= 'a') && (str[i] <= 'z')) ||
-        ((str[i] >= '0') && (str[i] <= '9')) )) {
-            new[j] = '\\';
-            j++;
-        }
-        new[j] = str[i];
-        j++;
-    }
-    new[j] = '\0';
-
-    return new;
-}
 
 int on_input_event(int fd, short revents, void *data);
 
@@ -103,7 +84,7 @@ void ui_init() {
 }
 
 void draw_screen() {
-    int cols, i;
+    unsigned int cols, i;
 
     gr_color(255, 255, 255, 255);
     gr_fill(0, 0, FB_WIDTH, SOFTKEYBD_TOP);
@@ -164,27 +145,45 @@ void write_modal_status_text(char *text) {
     gr_flip();
 }
 
-int unlock() {
-    char buffer[2048];
-    int ret;
-    char *esc_passphrase;
+bool unlock() {
+    int status;
+	pid_t pid;
+	int pipefds[2];
 
     write_modal_status_text("Unlocking...");
 
-    esc_passphrase = escape_input(passphrase);
-    ret = snprintf(buffer, sizeof(buffer), cmd_templ_passphrase, esc_passphrase);
-	if (ret >= sizeof(buffer)) {
-		write_modal_status_text("Command line overflow");
-		for (;;);
+	// pipe
+	if (pipe(pipefds) == -1) {
+		perror("pipe()");
+		return false;
 	}
 
-    ret = system(buffer);
+	// fork and exec
+	pid = fork();
+	if (pid == -1) {
+		perror("fork()");
+		return false;
+	} else if (pid == 0) {
+		// child
+		close(pipefds[1]);
+		dup2(pipefds[0], 0);
+		execv(cmd_passphrase_argv[0], cmd_passphrase_argv);
+		perror("execv()");
+		exit(255);
+		return false;
+	} else {
+		// parent
+		close(pipefds[0]);
+		write(pipefds[1], passphrase, strlen(passphrase));
+		close(pipefds[1]);
+		if (waitpid(pid, &status, 0) == -1) {
+			perror("waitpid()");
+			return false;
+		}
+		return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+	}
 
-    guaranteed_memset(esc_passphrase, 0, strlen(esc_passphrase));
-    free(esc_passphrase);
-    guaranteed_memset(buffer, 0, sizeof(buffer));
-
-    return ret == 0;
+	return false;
 }
 
 void boot_with_ramdisk() {
@@ -322,17 +321,17 @@ bool on_touch(int x, int y, int down) {
 
 void generate_keymappings();
 
-int main(int argc, char **argv, char **envp) {
-    if (argc != 3) {
-        printf("%s usage: passphrase-cmd-template ramdisk-mount-cmd", argv[0]);
+int main(int argc, char **argv, __attribute__((unused))char **envp) {
+    if (argc < 3) {
+        printf("%s usage: ramdisk-mount-cmd passphrase-cmd-pieces...", argv[0]);
         exit(255);
     }
 
     setrlimit(RLIMIT_CORE, 0); // stop creation of core dumps that could have secrets
 
     // save configuration params
-	cmd_templ_passphrase = argv[1];
-    cmd_mountramdisk = argv[2];
+    cmd_mountramdisk = argv[1];
+	cmd_passphrase_argv = &argv[2];
 
     // initialize keyboards
     hard_keybd.shift_state = SHIFT_STATE_NONE;
@@ -358,7 +357,7 @@ int main(int argc, char **argv, char **envp) {
     return 0;
 }
 
-int on_input_event(int fd, short revents, void *data) {
+int on_input_event(int fd, short revents, __attribute__((unused))void *data) {
     struct input_event ev;
 
     if(ev_get_input(fd, revents, &ev) != -1) {
@@ -478,7 +477,7 @@ void generate_keymappings() {
 #undef ADD_MAPPING
 
     // soft key coordinates
-    int i, x;
+    unsigned int i, x;
 #define ADD_MAPPING(a, i, _y, _x, h, w, _code) assert(i < lengthof(a)); a[i].y = _y; a[i].x = _x; a[i].width = w; a[i].height = h; a[i].code = _code;
     for (i = 0, x = 4; i < lengthof(soft_keybd_top_row); x += 80, i++) { ADD_MAPPING(soft_keybd_top_row, i, 2, x, 53, 72, KEY_Q + i); }
 
@@ -499,7 +498,7 @@ void generate_keymappings() {
 }
 
 int find_softkey_code(int x, int y) {
-    int i;
+    unsigned int i;
 
 #define SEARCH(arr) \
     for (i = 0; i < lengthof(arr); i++) { \
