@@ -26,9 +26,8 @@ char passphrase[1024];
 
 gr_surface img_softkeybd[4];
 
-char *cmd_mount;
-char *yaffs_dev;
-char *yaffs_mountpoint;
+char *cmd_templ_passphrase;
+char *cmd_mountramdisk;
 
 #define SHIFT_STATE_NONE 0
 #define SHIFT_STATE_SHIFTED 1
@@ -84,7 +83,7 @@ char *escape_input(char *str) {
 
 int on_input_event(int fd, short revents, void *data);
 
-void on_exit() {
+void on_end() {
     guaranteed_memset(passphrase, 0, sizeof(passphrase));
 
     ev_exit();
@@ -95,7 +94,7 @@ void ui_init() {
     gr_init(true);
     ev_init(on_input_event, NULL);
 
-    atexit(on_exit);
+    atexit(on_end);
 
     res_create_surface("softkeyboard1", &img_softkeybd[0]);
     res_create_surface("softkeyboard2", &img_softkeybd[1]);
@@ -173,7 +172,11 @@ int unlock() {
     write_modal_status_text("Unlocking...");
 
     esc_passphrase = escape_input(passphrase);
-    snprintf(buffer, sizeof(buffer), "%s -t yaffs2 -o nosuid,nodev,relatime,unlock_encrypted=%s %s %s", cmd_mount, esc_passphrase, yaffs_dev, yaffs_mountpoint);
+    ret = snprintf(buffer, sizeof(buffer), cmd_templ_passphrase, esc_passphrase);
+	if (ret >= sizeof(buffer)) {
+		write_modal_status_text("Command line overflow");
+		for (;;);
+	}
 
     ret = system(buffer);
 
@@ -185,13 +188,9 @@ int unlock() {
 }
 
 void boot_with_ramdisk() {
-    char buffer[512];
-
     write_modal_status_text("Booting with ramdisk...");
 
-    snprintf(buffer, sizeof(buffer), "%s -t tmpfs -o nosuid,nodev tmpfs /data", cmd_mount);
-    system(buffer);
-
+    system(cmd_mountramdisk);
     exit(0);
 }
 
@@ -324,17 +323,16 @@ bool on_touch(int x, int y, int down) {
 void generate_keymappings();
 
 int main(int argc, char **argv, char **envp) {
-    if (argc != 4) {
-        printf("%s usage: path-to-mount whisper-yaffs-device whisper-yaffs-mountpoint", argv[0]);
+    if (argc != 3) {
+        printf("%s usage: passphrase-cmd-template ramdisk-mount-cmd", argv[0]);
         exit(255);
     }
 
     setrlimit(RLIMIT_CORE, 0); // stop creation of core dumps that could have secrets
 
     // save configuration params
-    cmd_mount = argv[1];
-    yaffs_dev = argv[2];
-    yaffs_mountpoint = argv[3];
+	cmd_templ_passphrase = argv[1];
+    cmd_mountramdisk = argv[2];
 
     // initialize keyboards
     hard_keybd.shift_state = SHIFT_STATE_NONE;
