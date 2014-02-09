@@ -24,6 +24,7 @@ int CHAR_WIDTH, CHAR_HEIGHT, FB_WIDTH, FB_HEIGHT;
 #define SOFTKEYBD_TOP (FB_HEIGHT-260)
 
 char passphrase[1024];
+bool newchar_frame = false;
 
 gr_surface img_softkeybd[4];
 
@@ -105,20 +106,21 @@ void draw_screen() {
     gr_color(0, 0, 0, 255);
     cols = FB_WIDTH / CHAR_WIDTH;
 
-    for(i = 1; i < strlen(passphrase); i++) {
-        gr_text((i-1) * CHAR_WIDTH, CHAR_HEIGHT * 2, "*");
+	i = 0;
+	if (passphrase[0]) {
+		for(; i < strlen(passphrase)-1; i++) {
+			gr_text(i * CHAR_WIDTH, CHAR_HEIGHT * 2, "*");
+		}
+		if (!hide_all_passphrase_chars && newchar_frame) {
+			gr_text(i * CHAR_WIDTH, CHAR_HEIGHT * 2, &passphrase[i]); // show last char
+		} else {
+			gr_text(i * CHAR_WIDTH, CHAR_HEIGHT * 2, "*");
+		}
+		i++;
     }
-    if (passphrase[0]) {
-        if (!hide_all_passphrase_chars) {
-            gr_text((i-1) * CHAR_WIDTH, CHAR_HEIGHT * 2, &passphrase[i-1]); // show last char
-        } else {
-            gr_text((i-1) * CHAR_WIDTH, CHAR_HEIGHT * 2, "*");
-        }
-    } else {
-        i--;
-    }
+	newchar_frame = false;
 
-    for(; i < cols - 1; i++) {
+    for(; i < cols; i++) {
         gr_text(i * CHAR_WIDTH, CHAR_HEIGHT * 2, "_");
     }
 
@@ -214,6 +216,7 @@ bool handle_passphrase_key(int keycode, keymap *keymap, int shift_state) {
         char ch = keymap[shift_state].code_to_ch[keycode];
         if (ch) {
             snprintf(passphrase, sizeof(passphrase), "%s%c", passphrase, ch);
+			newchar_frame = true;
             return true;
         }
     }
