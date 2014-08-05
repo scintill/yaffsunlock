@@ -33,14 +33,6 @@
 
 #include "minui.h"
 
-// libpng gives "undefined reference to 'pow'" errors, and I have no
-// idea how to convince the build system to link with -lm.  We don't
-// need this functionality (it's used for gamma adjustment) so provide
-// a dummy implementation to satisfy the linker.
-double pow(double x, double y __attribute__((unused))) {
-    return x;
-}
-
 int res_create_surface(const char* name, gr_surface* pSurface) {
     char resPath[256];
     GGLSurface* surface = NULL;

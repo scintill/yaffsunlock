@@ -7,15 +7,16 @@ LOCAL_SRC_FILES := \
 
 LOCAL_MODULE := yaffsunlock
 
-LOCAL_FORCE_STATIC_EXECUTABLE := true
-
 LOCAL_CFLAGS += -DUSE_CUSTOM_FONT="\"roboto_15x24.h\"" \
                  -O3 -Wall -Werror -Wextra -std=c99
 
 LOCAL_STATIC_LIBRARIES := libunz
-LOCAL_STATIC_LIBRARIES += libpixelflinger_static libpng libcutils liblog
-LOCAL_STATIC_LIBRARIES += libstdc++ libc libz
-LOCAL_LDLIBS := -lm
+LOCAL_SHARED_LIBRARIES := libpixelflinger libpng libcutils liblog
+LOCAL_SHARED_LIBRARIES += libstdc++ libc libz
+
+LOCAL_C_INCLUDES += \
+	external/libpng \
+	external/zlib
 
 include $(BUILD_EXECUTABLE)
 
