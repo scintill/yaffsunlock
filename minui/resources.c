@@ -37,7 +37,7 @@
 // idea how to convince the build system to link with -lm.  We don't
 // need this functionality (it's used for gamma adjustment) so provide
 // a dummy implementation to satisfy the linker.
-double pow(double x, double y) {
+double pow(double x, double y __attribute__((unused))) {
     return x;
 }
 
@@ -51,7 +51,7 @@ int res_create_surface(const char* name, gr_surface* pSurface) {
 
     *pSurface = NULL;
 
-    snprintf(resPath, sizeof(resPath)-1, "/system/res/%s.png", name);
+    snprintf(resPath, sizeof(resPath)-1, "/system/media/yaffsunlock/%s.png", name);
     resPath[sizeof(resPath)-1] = '\0';
     FILE* fp = fopen(resPath, "rb");
     if (fp == NULL) {
@@ -130,7 +130,7 @@ int res_create_surface(const char* name, gr_surface* pSurface) {
         alpha = 1;
     }
 
-    int y;
+    unsigned int y;
     if (channels == 3 || (channels == 1 && !alpha)) {
         for (y = 0; y < height; ++y) {
             unsigned char* pRow = pData + y * stride;

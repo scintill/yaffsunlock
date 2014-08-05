@@ -30,8 +30,8 @@
 
 #include <pixelflinger/pixelflinger.h>
 
-#ifdef BOARD_USE_CUSTOM_RECOVERY_FONT
-#include BOARD_USE_CUSTOM_RECOVERY_FONT
+#ifdef USE_CUSTOM_FONT
+#include USE_CUSTOM_FONT
 #else
 #include "font_10x18.h"
 #endif
@@ -58,7 +58,6 @@ typedef struct {
 
 static GRFont *gr_font = 0;
 static GGLContext *gr_context = 0;
-static GGLSurface gr_font_texture;
 static GGLSurface gr_framebuffer[2];
 static GGLSurface gr_mem_surface;
 static unsigned gr_active_fb = 0;
@@ -186,8 +185,6 @@ static void set_active_framebuffer(unsigned n)
 
 void gr_flip(void)
 {
-    GGLContext *gl = gr_context;
-
     /* swap front and back buffers */
     gr_active_fb = (gr_active_fb + 1) & 1;
 
@@ -198,7 +195,7 @@ void gr_flip(void)
                fi.line_length * vi.yres);
     } else {
         // TODO make this faster? this is horribly inefficient, but I don't exactly need high FPS
-        int y, x;
+        unsigned int y, x;
 #if PIXEL_SIZE == 2
         for (y = 0; y < gr_mem_surface.height; y++) {
             for (x = 0; x < gr_mem_surface.width; x++) {
@@ -304,7 +301,7 @@ unsigned int gr_get_height(gr_surface surface) {
 static void gr_init_font(void)
 {
     GGLSurface *ftex;
-    unsigned char *bits, *rle;
+    unsigned char *bits;
     unsigned char *in, data;
 
     gr_font = calloc(sizeof(*gr_font), 1);
