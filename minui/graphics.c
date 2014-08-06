@@ -67,7 +67,7 @@ static int gr_vt_fd = -1;
 
 static bool rotate_cw = 0;
 
-static struct fb_var_screeninfo vi;
+static struct fb_var_screeninfo vi, vi_original;
 static struct fb_fix_screeninfo fi;
 
 static int get_framebuffer(GGLSurface *fb)
@@ -86,6 +86,8 @@ static int get_framebuffer(GGLSurface *fb)
         close(fd);
         return -1;
     }
+
+    memcpy(&vi_original, &vi, sizeof(vi)); // so we can restore it on exit
 
     vi.bits_per_pixel = PIXEL_SIZE * 8;
     if (PIXEL_FORMAT == GGL_PIXEL_FORMAT_BGRA_8888) {
@@ -374,6 +376,25 @@ int gr_init(bool rotate)
 
 void gr_exit(void)
 {
+    /**
+     * Restore vscreen params.  Otherwise when bootanimation and the framework take over, the display
+     * does weird things, because it's not in the mode they expected.
+     *
+     * But first, wipe to black, which should still be black in the new mode.
+     * Otherwise we get an annoying (or kind of cool, I suppose) flash of what's in the buffer right now,
+     * with weird colors and repeating, I guess due to being reinterpreted in the original mode.
+     */
+    gr_color(0, 0, 0, 255);
+    gr_fill(0, 0, gr_fb_width(), gr_fb_height());
+    gr_flip(); // get both buffers:
+    gr_color(0, 0, 0, 255);
+    gr_fill(0, 0, gr_fb_width(), gr_fb_height());
+    gr_flip();
+
+    if (ioctl(gr_fb_fd, FBIOPUT_VSCREENINFO, &vi_original) < 0) {
+        perror("Failed to put fb0 info back to original settings! Display may be garbled until reboot.");
+    }
+
     close(gr_fb_fd);
     gr_fb_fd = -1;
 
